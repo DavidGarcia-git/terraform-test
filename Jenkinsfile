@@ -1,52 +1,55 @@
 pipeline {
-    /* Executa no próprio nó “controller” (Ubuntu) */
+    /* Executa no próprio nó controller (Ubuntu) */
     agent any
 
-    /* Saída colorida + descarte de builds antigos + proibição de concorrência */
+    /* Opções de job */
     options {
-        ansiColor('xterm')
+        ansiColor('xterm')                        // cores no log
+        timestamps()                              // horário em cada linha
         buildDiscarder(logRotator(numToKeepStr: '30'))
-        disableConcurrentBuilds()
+        disableConcurrentBuilds()                 // só um build por vez
+        skipDefaultCheckout(true)                 // evita checkout automático
     }
 
-    /* Usa o Terraform que você configurou em
-       Manage Jenkins ▸ Global Tool Configuration  */
+    /* Usa a ferramenta cadastrada em
+       Manage Jenkins ▸ Global Tool Configuration → Terraform (name = terraform) */
     tools {
-        terraform 'terraform'          // Name = terraform, Install dir = /usr
+        terraform 'terraform'
     }
 
-    /* Variáveis que você pode alterar sem mexer no script */
+    /* Variáveis fáceis de alterar sem editar o resto do script */
     environment {
-        TF_BACKEND_BUCKET = 'meu-state'      // nome do bucket S3 (ou deixe vazio)
+        TF_BACKEND_BUCKET = ''        // deixe vazio enquanto não tiver bucket
         TF_BACKEND_REGION = 'us-east-1'
     }
 
     stages {
 
         stage('Checkout') {
-            steps {
-                checkout scm
-            }
+            steps { checkout scm }
         }
 
         stage('Init') {
             steps {
-                sh '''
-                    if [ -n "$TF_BACKEND_BUCKET" ]; then
-                      terraform init \
-                        -backend-config="bucket=$TF_BACKEND_BUCKET" \
-                        -backend-config="region=$TF_BACKEND_REGION"
-                    else
-                      terraform init
-                    fi
-                '''
+                script {
+                    if (env.TF_BACKEND_BUCKET?.trim()) {
+                        sh """
+                            terraform init \
+                              -backend-config="bucket=${TF_BACKEND_BUCKET}" \
+                              -backend-config="region=${TF_BACKEND_REGION}"
+                        """
+                    } else {
+                        sh 'terraform init'
+                    }
+                }
             }
         }
 
         stage('Fmt & Validate') {
             steps {
-                /* Se algum arquivo não estiver formatado, corrigimos e prosseguimos */
-                sh 'terraform fmt -recursive'
+                /* Formata arquivos (se necessário) e mostra diff.
+                   Não falha mesmo que mude algo.             */
+                sh 'terraform fmt -recursive -diff'
                 sh 'terraform validate'
             }
         }
@@ -57,8 +60,7 @@ pipeline {
             }
         }
 
-        /* Descomente se quiser aplicar automaticamente na branch main */
-        /*
+        /* Descomente se quiser aplicar automaticamente na branch main
         stage('Apply') {
             when { branch 'main' }
             steps {
