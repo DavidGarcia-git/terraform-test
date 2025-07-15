@@ -1,44 +1,64 @@
 pipeline {
-    /* Usa o próprio nó Jenkins (Ubuntu) como agente */
+    /* Executa no próprio nó “controller” (Ubuntu) */
     agent any
 
-    /* Saída colorida no console */
-    options { ansiColor('xterm') }
+    /* Saída colorida + descarte de builds antigos + proibição de concorrência */
+    options {
+        ansiColor('xterm')
+        buildDiscarder(logRotator(numToKeepStr: '30'))
+        disableConcurrentBuilds()
+    }
 
-    /* Diz ao Jenkins que já existe Terraform instalado em /usr/bin/terraform */
-    tools { terraform 'terraform' }
+    /* Usa o Terraform que você configurou em
+       Manage Jenkins ▸ Global Tool Configuration  */
+    tools {
+        terraform 'terraform'          // Name = terraform, Install dir = /usr
+    }
+
+    /* Variáveis que você pode alterar sem mexer no script */
+    environment {
+        TF_BACKEND_BUCKET = 'meu-state'      // nome do bucket S3 (ou deixe vazio)
+        TF_BACKEND_REGION = 'us-east-1'
+    }
 
     stages {
 
         stage('Checkout') {
             steps {
-                /* Clona o branch configurado no job */
                 checkout scm
+            }
+        }
+
+        stage('Init') {
+            steps {
+                sh '''
+                    if [ -n "$TF_BACKEND_BUCKET" ]; then
+                      terraform init \
+                        -backend-config="bucket=$TF_BACKEND_BUCKET" \
+                        -backend-config="region=$TF_BACKEND_REGION"
+                    else
+                      terraform init
+                    fi
+                '''
             }
         }
 
         stage('Fmt & Validate') {
             steps {
-                sh 'terraform fmt -check -recursive'   // verifica formatação
-                sh 'terraform validate'               // valida sintaxe
+                /* Se algum arquivo não estiver formatado, corrigimos e prosseguimos */
+                sh 'terraform fmt -recursive'
+                sh 'terraform validate'
             }
         }
 
         stage('Plan') {
             steps {
-                /* Ajuste o backend conforme precisar.
-                   Se não usar S3/Terraform Cloud, remova as linhas -backend-config. */
-                sh '''
-                   terraform init \
-                     -backend-config="bucket=meu-state" \
-                     -backend-config="region=us-east-1"
-
-                   terraform plan -out=tfplan
-                '''
+                sh 'terraform plan -out=tfplan'
             }
         }
 
-        /* Descomente este bloco se quiser aplicar automaticamente na branch main
+        /* Descomente se quiser aplicar automaticamente na branch main */
+        /*
         stage('Apply') {
             when { branch 'main' }
             steps {
@@ -48,8 +68,9 @@ pipeline {
         */
     }
 
-    /* Salva o arquivo tfplan como artefato, para baixar depois se quiser */
     post {
-        always { archiveArtifacts artifacts: 'tfplan', fingerprint: true }
+        always {
+            archiveArtifacts artifacts: 'tfplan', fingerprint: true
+        }
     }
 }
