@@ -1,10 +1,7 @@
-resource "random_id" "suffix" {
-  byte_length = 2
-}
-
+# main.tf
 resource "aws_s3_bucket" "demo" {
-  bucket        = "terraform-demo-${random_id.suffix.hex}"
-  force_destroy = true # permite deletar o bucket sem erro
+  bucket        = "bucket-test12213"
+  force_destroy = true        # permite deletar o bucket mesmo com objetos
 }
 
 output "bucket_name" {
