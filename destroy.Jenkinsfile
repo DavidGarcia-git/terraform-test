@@ -51,7 +51,7 @@ pipeline {
                     usernameVariable: 'AWS_ACCESS_KEY_ID',
                     passwordVariable: 'AWS_SECRET_ACCESS_KEY')]) {
 
-                    sh 'terraform apply -auto-approve destroy.tfplan'
+                    sh 'terraform -auto-approve destroy tfplan'
                 }
             }
         }
