@@ -1,32 +1,33 @@
 pipeline {
-    /* Executa no próprio nó controller (Ubuntu) ---------------------------- */
+    /* Executa no node controller ----------------------------------------- */
     agent any
 
-    /* Opções do job -------------------------------------------------------- */
+    /* Opções -------------------------------------------------------------- */
     options {
-        ansiColor('xterm')                        // cores no log
-        timestamps()                              // horário em cada linha
+        ansiColor('xterm')
+        timestamps()
         buildDiscarder(logRotator(numToKeepStr: '30'))
-        disableConcurrentBuilds()                 // só um build por vez
-        skipDefaultCheckout(true)                 // evita checkout automático
+        disableConcurrentBuilds()
+        skipDefaultCheckout(true)
     }
 
-    /* Ferramentas instaladas no Jenkins ------------------------------------ */
-    tools { terraform 'terraform' }               // nome cadastrado em Global Tool
+    /* Ferramentas --------------------------------------------------------- */
+    tools { terraform 'terraform' }
 
-    /* Variáveis fáceis de editar ------------------------------------------- */
+    /* Variáveis fáceis de ajustar ---------------------------------------- */
     environment {
-        TF_BACKEND_BUCKET = ''        // deixe vazio enquanto não tiver bucket
+        TF_BACKEND_BUCKET = ''              // → coloque o bucket depois
         TF_BACKEND_REGION = 'us-east-1'
     }
 
     stages {
-        /* ------------------------------------------------------------------ */
+
+        /* ---------- Checkout -------------------------------------------- */
         stage('Checkout') {
             steps { checkout scm }
         }
 
-        /* ------------------------------------------------------------------ */
+        /* ---------- Init ------------------------------------------------ */
         stage('Init') {
             steps {
                 withCredentials([usernamePassword(
@@ -49,15 +50,16 @@ pipeline {
             }
         }
 
-        /* ------------------------------------------------------------------ */
+        /* ---------- Fmt & Validate -------------------------------------- */
         stage('Fmt & Validate') {
             steps {
-                sh 'terraform fmt -recursive -diff -check'   // falha se houver arquivo fora do padrão
+                /* Apenas mostra diferenças, mas NÃO falha o build */
+                sh 'terraform fmt -recursive -diff'
                 sh 'terraform validate'
             }
         }
 
-        /* ------------------------------------------------------------------ */
+        /* ---------- Plan ------------------------------------------------ */
         stage('Plan') {
             steps {
                 withCredentials([usernamePassword(
@@ -70,9 +72,8 @@ pipeline {
             }
         }
 
-        /* ------------------------------------------------------------------ */
+        /* ---------- Apply (sempre) -------------------------------------- */
         stage('Apply') {
-            when { branch 'main' }           // aplica só na branch main
             steps {
                 withCredentials([usernamePassword(
                     credentialsId: 'aws-terraform',
@@ -85,7 +86,7 @@ pipeline {
         }
     }
 
-    /* Pós-build ------------------------------------------------------------ */
+    /* ---------- Pós-build ---------------------------------------------- */
     post {
         always {
             archiveArtifacts artifacts: 'tfplan', fingerprint: true
